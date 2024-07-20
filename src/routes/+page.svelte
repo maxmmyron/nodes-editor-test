@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { writable, get } from "svelte/store";
   // represent this in a manner that allows us to programmatically build out a tree of nodes
   // 1. list containing all nodes
   // 2. graph of nodes (how to get detached nodes if we find this via traversing)?
@@ -31,68 +32,37 @@
     ];
   };
 
-  // let x: App.Node<({ x, y }: { x: number; y: number }) => { z: number }> = {
-  //   transform: ({ x, y }) => ({ z: x * y }),
-  //   out: { z: 0 },
-  // };
-
-  // let y: App.Node<({ a, b }: { a: number; b: number }) => { c: number }> = {
-  //   uuid: Math.floor(Math.random() * 10000000).toString(36)
-  //   transform: ({ a, b }) => ({ c: a + b }),
-  //   out: { c: 0 },
-  // };
-
-  // connect(x, "z", y, "a");
-
-  // on connect:
-
   let createNode = <T extends (args: any) => Record<string, any>>(
-    transformFn: T,
+    transform: T,
     inputs: Parameters<T>[0],
     outputs: ReturnType<T>
   ): App.Node<T> => {
     let uuid = Math.floor(Math.random() * 10000000).toString(36);
 
-    return {
+    let node = {
       uuid,
-      _transform: transformFn,
-      inputs,
-      outputs,
-      transform: () => {
-        let args: { [key: string]: any } = {};
-        for (const param of Object.keys(inputs)) {
-          let pair = graph.edges.find(
-            ([_, rhs]) => rhs.node.uuid === uuid && rhs.key === param
-          );
-          if (!pair) {
-            // set to default
-            args[param] = inputs[param];
-          } else {
-            console.log(pair[0]);
-            args[param] = pair[0].node.outputs[pair[0].key.toString()];
-          }
-        }
-
-        let res = transformFn(args) as ReturnType<T>;
-
-        // update outputs
-        outputs = res;
-
-        return res;
-      },
+      transform,
+      inputs: writable(inputs),
+      outputs: writable(outputs),
     };
-  };
 
-  let v1Val = 1;
-  let v2Val = 2;
-  let v3Val = 3;
+    node.inputs.subscribe((s) => {
+      console.log("transforming...");
+      const transformed = transform(s) as ReturnType<T>;
+      node.outputs.set(transformed);
+    });
+
+    graph.nodes = [...graph.nodes, node];
+
+    return node;
+  };
 
   // 1 + 2 = 3
   // value node: 1
-  let v1 = createNode(() => ({ default: v1Val }), undefined, { default: 0 });
+  let v1 = createNode(() => ({ default: 0 }), undefined, { default: 0 });
 
   // value node: 2
-  let v2 = createNode(() => ({ default: v2Val }), undefined, { default: 0 });
+  let v2 = createNode(() => ({ default: 0 }), undefined, { default: 0 });
 
   // sum node: 1 + 2
   const sum = createNode(
@@ -106,24 +76,96 @@
   connect(v1, "default", sum, "a");
   connect(v2, "default", sum, "b");
 
-  console.log(graph.edges);
+  let v1Out = 0,
+    v2Out = 0;
 
-  $: sumOut = sum.transform().sum;
-  $: console.log(sumOut);
+  v1.outputs.subscribe((e) => {
+    console.log(e);
+    v1Out = e.default;
+  });
 
-  // $: sumOut = sum.transform({
-  //   a: v1.transform().default,
-  //   b: v2.transform().default,
-  // }).sum;
+  v2.outputs.subscribe((e) => {
+    console.log(e);
+    v2Out = e.default;
+  });
 
-  // $: v3 = createNode(() => ({ default: v3Val }));
-
-  // $: sumOut2 = sum.transform({ a: sumOut, b: v3.transform().default }).sum;
+  $: sumOut = sum.transform({
+    a: v1Out,
+    b: v2Out,
+  }).sum;
 </script>
 
-<!-- {sumOut} -- {sumOut2} -->
+{#each graph.nodes as node}
+  {@const __inputs = get(node.inputs)}
+  {@const __outputs = get(node.outputs)}
+  <div class="node">
+    {#if __inputs}
+      <aside class="inputs">
+        {#each Object.entries(__inputs) as [key, value]}
+          <div class="input">
+            <p>{key}</p>
+            <!-- TODO: don't show if this node has a connection into this input! -->
+            {#if typeof value === "number"}
+              <input
+                type="range"
+                on:input={(e) => {
+                  const newValue = e.currentTarget.valueAsNumber;
+                  node.inputs.set({ ...__inputs, [key]: newValue });
+                }}
+              />
+            {/if}
+          </div>
+        {/each}
+      </aside>
+    {/if}
+    <main></main>
+    {#if __outputs}
+      <aside class="outputs">
+        {#each Object.entries(__outputs) as [key, value]}
+          <!-- If there *are* inputs, we can just directly render
+         the output el since we don't want to allow transform -->
+          {#if __inputs}
+            <p>{key}</p>
+          {:else}
+            <div class="output">
+              <p>{key}</p>
+              {#if typeof value === "number"}
+                <input
+                  type="range"
+                  on:input={(e) => {
+                    const newValue = e.currentTarget.valueAsNumber;
+                    node.outputs.set({ ...__outputs, [key]: newValue });
+                  }}
+                />
+              {/if}
+            </div>
+          {/if}
+        {/each}
+      </aside>
+    {/if}
+  </div>
+{/each}
+
 {sumOut}
 
-<input type="range" min="0" max="20" bind:value={v1Val} />
-<input type="range" min="0" max="20" bind:value={v2Val} />
-<input type="range" min="0" max="20" bind:value={v3Val} />
+<style>
+  .node {
+    width: 200px;
+    height: 150px;
+    border: 1px solid black;
+    border-radius: 2px;
+    display: flex;
+    gap: 2px;
+  }
+
+  .node > aside {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .node > main {
+    flex-grow: 1;
+    background-color: blue;
+  }
+</style>

@@ -1,4 +1,7 @@
 // See https://kit.svelte.dev/docs/types#app
+
+import type { Writable } from "svelte/store";
+
 // for information about these interfaces
 declare global {
 	namespace App {
@@ -19,10 +22,9 @@ declare global {
 
 		type Node<T extends (args: any) => Record<string, any>> = {
 			uuid: string;
-			_transform: T;
-			inputs: Parameters<T>[0];
-			outputs: ReturnType<T>;
-			transform: () => ReturnType<T>;
+			transform: T;
+			inputs: Writable<Parameters<T>[0]>;
+			outputs: Writable<ReturnType<T>>;
 		};
 	}
 }
