@@ -30,7 +30,24 @@
         { node: nodeB, key: keyB },
       ],
     ];
+
+    nodeA.outputs.subscribe((e) => {
+      let out: ReturnType<T>[K] = e[keyA];
+      nodeB.inputs.update((e) => ({ ...e, [keyB]: out }));
+    });
   };
+
+  const disconnect = <
+    T extends (args: any) => Record<string, any>,
+    K extends keyof ReturnType<T>,
+    U extends (args: any) => Record<string, any>,
+    V extends keyof Parameters<U>[0],
+  >(
+    nodeA: App.Node<T>,
+    keyA: K,
+    nodeB: App.Node<U>,
+    keyB: V
+  ) => {};
 
   let createNode = <T extends (args: any) => Record<string, any>>(
     transform: T,
@@ -47,7 +64,6 @@
     };
 
     node.inputs.subscribe((s) => {
-      console.log("transforming...");
       const transformed = transform(s) as ReturnType<T>;
       node.outputs.set(transformed);
     });
@@ -57,14 +73,8 @@
     return node;
   };
 
-  // 1 + 2 = 3
-  // value node: 1
-  let v1 = createNode(() => ({ default: 0 }), undefined, { default: 0 });
-
-  // value node: 2
-  let v2 = createNode(() => ({ default: 0 }), undefined, { default: 0 });
-
-  // sum node: 1 + 2
+  let staticA = createNode(() => ({ default: 0 }), undefined, { default: 0 });
+  let staticB = createNode(() => ({ default: 0 }), undefined, { default: 0 });
   const sum = createNode(
     ({ a, b }: { a: number; b: number }) => ({
       sum: a + b,
@@ -73,26 +83,11 @@
     { sum: 0 }
   );
 
-  connect(v1, "default", sum, "a");
-  connect(v2, "default", sum, "b");
+  connect(staticA, "default", sum, "a");
+  connect(staticB, "default", sum, "b");
 
-  let v1Out = 0,
-    v2Out = 0;
-
-  v1.outputs.subscribe((e) => {
-    console.log(e);
-    v1Out = e.default;
-  });
-
-  v2.outputs.subscribe((e) => {
-    console.log(e);
-    v2Out = e.default;
-  });
-
-  $: sumOut = sum.transform({
-    a: v1Out,
-    b: v2Out,
-  }).sum;
+  let sumOut: number;
+  sum.outputs.subscribe((e) => (sumOut = e.sum));
 </script>
 
 {#each graph.nodes as node}
@@ -102,19 +97,24 @@
     {#if __inputs}
       <aside class="inputs">
         {#each Object.entries(__inputs) as [key, value]}
-          <div class="input">
+          <!-- If there exists an edge that this input is a vertex of, then we don't want to render any input -->
+          {#if graph.edges.find((edge) => edge[1].node === node && edge[1].key === key)}
             <p>{key}</p>
-            <!-- TODO: don't show if this node has a connection into this input! -->
-            {#if typeof value === "number"}
-              <input
-                type="range"
-                on:input={(e) => {
-                  const newValue = e.currentTarget.valueAsNumber;
-                  node.inputs.set({ ...__inputs, [key]: newValue });
-                }}
-              />
-            {/if}
-          </div>
+          {:else}
+            <div class="input">
+              <p>{key}</p>
+              <!-- TODO: don't show if this node has a connection into this input! -->
+              {#if typeof value === "number"}
+                <input
+                  type="range"
+                  on:input={(e) => {
+                    const newValue = e.currentTarget.valueAsNumber;
+                    node.inputs.set({ ...__inputs, [key]: newValue });
+                  }}
+                />
+              {/if}
+            </div>
+          {/if}
         {/each}
       </aside>
     {/if}
