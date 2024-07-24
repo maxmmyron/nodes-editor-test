@@ -106,8 +106,8 @@
     return node;
   };
 
-  let a = createNode(() => ({ default: 0 }), undefined, { default: 0 });
-  let b = createNode(() => ({ default: 0 }), undefined, { default: 0 });
+  let staticA = createNode(() => ({ default: 0 }), undefined, { default: 0 });
+  let staticB = createNode(() => ({ default: 0 }), undefined, { default: 0 });
   const sum = createNode(
     ({ a, b }: { a: number; b: number }) => ({
       sum: a + b,
@@ -116,8 +116,8 @@
     { sum: 0 }
   );
 
-  connect(a, "default", sum, "a");
-  connect(b, "default", sum, "b");
+  connect(staticA, "default", sum, "a");
+  connect(staticB, "default", sum, "b");
 
   let sumOut: number;
   sum.outputs.subscribe((e) => (sumOut = e.sum));
