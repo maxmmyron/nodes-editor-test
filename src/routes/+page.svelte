@@ -12,6 +12,11 @@
     edges: [],
   };
 
+  let initialConnectionDirection: "out" | "in" = "out";
+  let initialConnection: App.Connection<
+    (args: any) => Record<string, any>
+  > | null = null;
+
   const connect = <
     T extends (args: any) => Record<string, any>,
     K extends keyof ReturnType<T>,
@@ -49,6 +54,8 @@
         unsubscriber,
       },
     ];
+
+    initialConnection = null;
   };
 
   const disconnect = <
@@ -70,14 +77,9 @@
         inVertex.key === keyB
     );
 
-    console.log(edge);
-
     // if an edge exists, call the unsubscriber method and remove it from the graph.
     if (edge) {
       edge.unsubscriber();
-      console.log(
-        `disconnecting ${nodeA.uuid}/${keyA.toString()} from ${nodeB.uuid}/${keyB.toString()}`
-      );
       graph.edges = graph.edges.filter((e) => e !== edge);
     }
   };
@@ -123,6 +125,14 @@
   sum.outputs.subscribe((e) => (sumOut = e.sum));
 </script>
 
+<svelte:window
+  on:click={() => {
+    if (initialConnection) {
+      initialConnection = null;
+    }
+  }}
+/>
+
 {#each graph.nodes as node}
   {@const __inputs = get(node.inputs)}
   {@const __outputs = get(node.outputs)}
@@ -135,7 +145,23 @@
           )}
           <div class="input">
             <p>{key}</p>
-            {#if connection}
+            {#if initialConnection && initialConnectionDirection === "out"}
+              <!-- If there exists an initial connection (i.e. we're drawing a new edge) and we're drawing an edge *from* an output, then allow connection to this -->
+              <button
+                on:click={() => {
+                  // FIXME: this shouldn't be necessary
+                  if (!initialConnection) return;
+                  connect(
+                    initialConnection.node,
+                    initialConnection.key.toString(),
+                    node,
+                    key
+                  );
+                }}
+              >
+                @
+              </button>
+            {:else if connection}
               <!-- If there exists an edge that this input is a vertex of, render the disconnect button -->
               <button
                 on:click={() =>
@@ -149,6 +175,14 @@
                 x
               </button>
             {:else}
+              <button
+                on:click|stopPropagation={() => {
+                  initialConnectionDirection = "in";
+                  initialConnection = { node, key };
+                }}
+              >
+                +
+              </button>
               <!-- Otherwise, render an input slider that corresponds to the type of the input TODO: very temporary behavior! -->
               {#if typeof value === "number"}
                 <input
@@ -173,7 +207,23 @@
           )}
           <div class="output">
             <p>{key}-{node.uuid}</p>
-            {#if connection}
+            {#if initialConnection && initialConnectionDirection === "in"}
+              <!-- If there exists an initial connection (i.e. we're drawing a new edge) and we're drawing an edge *from* an output, then allow connection to this -->
+              <button
+                on:click={() => {
+                  // FIXME: this shouldn't be necessary
+                  if (!initialConnection) return;
+                  connect(
+                    node,
+                    key,
+                    initialConnection.node,
+                    initialConnection.key.toString()
+                  );
+                }}
+              >
+                @
+              </button>
+            {:else if connection}
               <p>({connection.inVertex.key})</p>
               <!-- If there exists an edge that this output is a vertex of, render the disconnect button -->
               <button
@@ -186,6 +236,15 @@
                   )}
               >
                 x
+              </button>
+            {:else}
+              <button
+                on:click|stopPropagation={() => {
+                  initialConnectionDirection = "out";
+                  initialConnection = { node, key };
+                }}
+              >
+                +
               </button>
             {/if}
             {#if !__inputs}
