@@ -23,18 +23,32 @@
     nodeB: App.Node<U>,
     keyB: V
   ) => {
-    graph.edges = [
-      ...graph.edges,
-      [
-        { node: nodeA, key: keyA },
-        { node: nodeB, key: keyB },
-      ],
-    ];
-
-    nodeA.outputs.subscribe((e) => {
+    const unsubscriber = nodeA.outputs.subscribe((e) => {
       let out: ReturnType<T>[K] = e[keyA];
       nodeB.inputs.update((e) => ({ ...e, [keyB]: out }));
     });
+
+    // if there exists an edge from nodeA/keyA -> nodeB/keyB, return
+    if (
+      graph.edges.find(
+        ({ outVertex, inVertex }) =>
+          outVertex.node === nodeA &&
+          outVertex.key === keyA &&
+          inVertex.node === nodeB &&
+          inVertex.key === keyB
+      )
+    ) {
+      return;
+    }
+
+    graph.edges = [
+      ...graph.edges,
+      {
+        outVertex: { node: nodeA, key: keyA },
+        inVertex: { node: nodeB, key: keyB },
+        unsubscriber,
+      },
+    ];
   };
 
   const disconnect = <
@@ -47,7 +61,26 @@
     keyA: K,
     nodeB: App.Node<U>,
     keyB: V
-  ) => {};
+  ) => {
+    const edge = graph.edges.find(
+      ({ outVertex, inVertex }) =>
+        outVertex.node === nodeA &&
+        outVertex.key === keyA &&
+        inVertex.node === nodeB &&
+        inVertex.key === keyB
+    );
+
+    console.log(edge);
+
+    // if an edge exists, call the unsubscriber method and remove it from the graph.
+    if (edge) {
+      edge.unsubscriber();
+      console.log(
+        `disconnecting ${nodeA.uuid}/${keyA.toString()} from ${nodeB.uuid}/${keyB.toString()}`
+      );
+      graph.edges = graph.edges.filter((e) => e !== edge);
+    }
+  };
 
   let createNode = <T extends (args: any) => Record<string, any>>(
     transform: T,
@@ -73,8 +106,8 @@
     return node;
   };
 
-  let staticA = createNode(() => ({ default: 0 }), undefined, { default: 0 });
-  let staticB = createNode(() => ({ default: 0 }), undefined, { default: 0 });
+  let a = createNode(() => ({ default: 0 }), undefined, { default: 0 });
+  let b = createNode(() => ({ default: 0 }), undefined, { default: 0 });
   const sum = createNode(
     ({ a, b }: { a: number; b: number }) => ({
       sum: a + b,
@@ -83,8 +116,8 @@
     { sum: 0 }
   );
 
-  connect(staticA, "default", sum, "a");
-  connect(staticB, "default", sum, "b");
+  connect(a, "default", sum, "a");
+  connect(b, "default", sum, "b");
 
   let sumOut: number;
   sum.outputs.subscribe((e) => (sumOut = e.sum));
@@ -97,13 +130,26 @@
     {#if __inputs}
       <aside class="inputs">
         {#each Object.entries(__inputs) as [key, value]}
-          <!-- If there exists an edge that this input is a vertex of, then we don't want to render any input -->
-          {#if graph.edges.find((edge) => edge[1].node === node && edge[1].key === key)}
+          {@const connection = graph.edges.find(
+            ({ inVertex }) => inVertex.node === node && inVertex.key === key
+          )}
+          <div class="input">
             <p>{key}</p>
-          {:else}
-            <div class="input">
-              <p>{key}</p>
-              <!-- TODO: don't show if this node has a connection into this input! -->
+            {#if connection}
+              <!-- If there exists an edge that this input is a vertex of, render the disconnect button -->
+              <button
+                on:click={() =>
+                  disconnect(
+                    connection.outVertex.node,
+                    connection.outVertex.key.toString(),
+                    connection.inVertex.node,
+                    connection.inVertex.key
+                  )}
+              >
+                x
+              </button>
+            {:else}
+              <!-- Otherwise, render an input slider that corresponds to the type of the input TODO: very temporary behavior! -->
               {#if typeof value === "number"}
                 <input
                   type="range"
@@ -113,33 +159,46 @@
                   }}
                 />
               {/if}
-            </div>
-          {/if}
+            {/if}
+          </div>
         {/each}
       </aside>
     {/if}
     <main></main>
     {#if __outputs}
       <aside class="outputs">
-        {#each Object.entries(__outputs) as [key, value]}
-          <!-- If there *are* inputs, we can just directly render
-         the output el since we don't want to allow transform -->
-          {#if __inputs}
-            <p>{key}</p>
-          {:else}
-            <div class="output">
-              <p>{key}</p>
-              {#if typeof value === "number"}
-                <input
-                  type="range"
-                  on:input={(e) => {
-                    const newValue = e.currentTarget.valueAsNumber;
-                    node.outputs.set({ ...__outputs, [key]: newValue });
-                  }}
-                />
-              {/if}
-            </div>
-          {/if}
+        {#each Object.entries(__outputs) as [key, value] (node.uuid + key)}
+          {@const connection = graph.edges.find(
+            ({ outVertex }) => outVertex.node === node && outVertex.key === key
+          )}
+          <div class="output">
+            <p>{key}-{node.uuid}</p>
+            {#if connection}
+              <p>({connection.inVertex.key})</p>
+              <!-- If there exists an edge that this output is a vertex of, render the disconnect button -->
+              <button
+                on:click={() =>
+                  disconnect(
+                    connection.outVertex.node,
+                    connection.outVertex.key.toString(),
+                    connection.inVertex.node,
+                    connection.inVertex.key
+                  )}
+              >
+                x
+              </button>
+            {/if}
+            {#if !__inputs}
+              <!-- If there are *no* inputs on this node, then render an input value to modify the output (since it can't be transformed by some function) TODO: very temporary behavior! -->
+              <input
+                type="range"
+                on:input={(e) => {
+                  const newValue = e.currentTarget.valueAsNumber;
+                  node.outputs.set({ ...__outputs, [key]: newValue });
+                }}
+              />
+            {/if}
+          </div>
         {/each}
       </aside>
     {/if}
