@@ -7,11 +7,13 @@ declare global {
 	namespace App {
 		type FilterGraph = {
 			nodes: Array<Node<(args: any) => Record<string, any>>>;
-			edges: Array<{
-				outVertex:Connection<(args: any) => Record<string, any>>;
-				inVertex:Connection<(args: any) => Record<string, any>>;
-				unsubscriber: Unsubscriber;
-			}>;
+			edges: Array<App.Edge>;
+		};
+
+		type Edge = {
+			outVertex: Connection<(args: any) => Record<string, any>>;
+			inVertex: Connection<(args: any) => Record<string, any>>;
+			unsubscriber: Unsubscriber;
 		};
 
 		type Connection<T extends (args: any) => Record<string, any>> = {
