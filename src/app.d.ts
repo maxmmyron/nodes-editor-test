@@ -23,6 +23,8 @@ declare global {
 
 		type Node<T extends (args: any) => Record<string, any>> = {
 			uuid: string;
+			pos: [number, number];
+			ref: HTMLElement | null;
 			transform: T;
 			inputs: Writable<Parameters<T>[0]>;
 			outputs: Writable<ReturnType<T>>;
