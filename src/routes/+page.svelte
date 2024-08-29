@@ -1,109 +1,13 @@
 <script lang="ts">
-  import { writable, get } from "svelte/store";
+  import { connect, createGraph, createNode, disconnect } from "$lib";
+  import { get } from "svelte/store";
 
-  let graph: App.FilterGraph = {
-    nodes: [],
-    edges: [],
-  };
+  let graph = createGraph();
 
   let initialConnectionDirection: "out" | "in" = "out";
   let initialConnection: App.Connection<
     (args: any) => Record<string, any>
   > | null = null;
-
-  const connect = <
-    T extends (args: any) => Record<string, any>,
-    K extends keyof ReturnType<T>,
-    U extends (args: any) => Record<string, any>,
-    V extends keyof Parameters<U>[0],
-  >(
-    nodeA: App.Node<T>,
-    keyA: K,
-    nodeB: App.Node<U>,
-    keyB: V
-  ) => {
-    const unsubscriber = nodeA.outputs.subscribe((e) => {
-      let out: ReturnType<T>[K] = e[keyA];
-      nodeB.inputs.update((e) => ({ ...e, [keyB]: out }));
-    });
-
-    // if there exists an edge from nodeA/keyA -> nodeB/keyB, return
-    if (
-      graph.edges.find(
-        ({ outVertex, inVertex }) =>
-          outVertex.node === nodeA &&
-          outVertex.key === keyA &&
-          inVertex.node === nodeB &&
-          inVertex.key === keyB
-      )
-    ) {
-      return;
-    }
-
-    graph.edges = [
-      ...graph.edges,
-      {
-        outVertex: { node: nodeA, key: keyA },
-        inVertex: { node: nodeB, key: keyB },
-        unsubscriber,
-      },
-    ];
-
-    initialConnection = null;
-  };
-
-  const disconnect = <
-    T extends (args: any) => Record<string, any>,
-    K extends keyof ReturnType<T>,
-    U extends (args: any) => Record<string, any>,
-    V extends keyof Parameters<U>[0],
-  >(
-    nodeA: App.Node<T>,
-    keyA: K,
-    nodeB: App.Node<U>,
-    keyB: V
-  ) => {
-    const edge = graph.edges.find(
-      ({ outVertex, inVertex }) =>
-        outVertex.node === nodeA &&
-        outVertex.key === keyA &&
-        inVertex.node === nodeB &&
-        inVertex.key === keyB
-    );
-
-    // if an edge exists, call the unsubscriber method and remove it from the graph.
-    if (edge) {
-      edge.unsubscriber();
-      graph.edges = graph.edges.filter((e) => e !== edge);
-    }
-  };
-
-  let createNode = <T extends (args: any) => Record<string, any>>(
-    transform: T,
-    inputs: Parameters<T>[0],
-    outputs: ReturnType<T>,
-    pos?: [number, number]
-  ): App.Node<T> => {
-    let uuid = Math.floor(Math.random() * 10000000).toString(36);
-
-    let node: App.Node<T> = {
-      uuid,
-      transform,
-      inputs: writable(inputs),
-      outputs: writable(outputs),
-      pos: pos ?? [0, 0],
-      ref: null,
-    };
-
-    node.inputs.subscribe((s) => {
-      const transformed = transform(s) as ReturnType<T>;
-      node.outputs.set(transformed);
-    });
-
-    graph.nodes = [...graph.nodes, node];
-
-    return node;
-  };
 
   let staticA = createNode(
     () => ({ default: 0 }),
@@ -126,8 +30,8 @@
     [500, 250]
   );
 
-  connect(staticA, "default", sum, "a");
-  connect(staticB, "default", sum, "b");
+  connect(graph, staticA, "default", sum, "a");
+  connect(graph, staticB, "default", sum, "b");
 
   let sumOut: number;
   sum.outputs.subscribe((e) => (sumOut = e.sum));
@@ -147,6 +51,7 @@
   ) => {
     if (!outVertex || !inVertex) return;
     connect(
+      graph,
       outVertex.node,
       outVertex.key.toString(),
       inVertex.node,
@@ -156,6 +61,7 @@
 
   const removeConnection = (connection: App.Edge) => {
     disconnect(
+      graph,
       connection.outVertex.node,
       connection.outVertex.key.toString(),
       connection.inVertex.node,
@@ -213,7 +119,7 @@
 <!--     SHOW: "disconnect" button -->
 <!--   SHOW: "start connection" button -->
 
-<main class="relative">
+<div class="relative w-full h-full">
   {#each graph.nodes as node}
     {@const __inputs = get(node.inputs)}
     {@const __outputs = get(node.outputs)}
@@ -224,107 +130,113 @@
       <header class="border-b">
         <p class="text-center">{node.uuid}</p>
       </header>
-      {#if __inputs}
-        <aside class="flex flex-col gap-1">
-          {#each Object.entries(__inputs) as [key, value]}
-            {@const connection = graph.edges.find(
-              ({ inVertex }) => inVertex.node === node && inVertex.key === key
-            )}
-            <div class="flex">
-              <p>{key}</p>
-              {#if initialConnection && initialConnectionDirection === "out"}
-                <!-- If we're drawing a new edge AND we're drawing from an
-              output, check if this node is a valid input to connect to -->
-                {#if initialConnection.node.uuid !== node.uuid && getConnections( { node, key } ).length === 0}
-                  <!-- If this input is valid, allow connection -->
+      <main class="flex">
+        {#if __inputs}
+          <aside class="flex flex-col gap-1">
+            {#each Object.entries(__inputs) as [key, value]}
+              {@const connections = getConnections({ node, key })}
+              <div class="flex gap-0.5">
+                {#if connections.length === 0}
                   <button
-                    on:click={() =>
-                      endConnection(initialConnection, { node, key })}
+                    on:click|stopPropagation={() =>
+                      startConnection(node, key, "in")}
                   >
-                    @
+                    +
                   </button>
                 {/if}
-              {:else if connection}
-                <!-- If there exists an edge that this input is a vertex of,
+                {#if initialConnection && initialConnectionDirection === "out" && connections.length === 0}
+                  <!-- If we're drawing a new edge AND we're drawing from an
+              output, check if this node is a valid input to connect to -->
+                  {#if initialConnection.node.uuid !== node.uuid}
+                    <!-- If this input is valid, allow connection -->
+                    <button
+                      on:click={() =>
+                        endConnection(initialConnection, { node, key })}
+                    >
+                      @
+                    </button>
+                  {/if}
+                {:else if connections.length > 0}
+                  <!-- If there exists an edge that this input is a vertex of,
               render the disconnect button -->
-                <button on:click={() => removeConnection(connection)}>x</button>
-              {:else}
-                <!-- Otherwise, render an input slider that corresponds to the
+                  <button on:click={() => removeConnection(connections[0])}
+                    >x</button
+                  >
+                {:else}
+                  <!-- Otherwise, render an input slider that corresponds to the
               type of the input TODO: very temporary behavior! -->
-                {#if typeof value === "number"}
+                  {#if typeof value === "number"}
+                    <input
+                      type="range"
+                      on:input={(e) => {
+                        const newValue = e.currentTarget.valueAsNumber;
+                        node.inputs.set({ ...__inputs, [key]: newValue });
+                      }}
+                    />
+                  {/if}
+                {/if}
+                <p>{key}</p>
+              </div>
+            {/each}
+          </aside>
+        {/if}
+        <div class="flex-grow"></div>
+        {#if __outputs}
+          <aside class="flex flex-col gap-1">
+            {#each Object.entries(__outputs) as [key, value] (node.uuid + key)}
+              {@const connection = graph.edges.find(
+                ({ outVertex }) =>
+                  outVertex.node === node && outVertex.key === key
+              )}
+              <div class="flex gap-0.5">
+                <p>{key}</p>
+                {#if !__inputs}
+                  <!-- If there are *no* inputs on this node, then render an input
+              value to modify the output (since it can't be transformed by some
+              function) TODO: very temporary behavior! -->
                   <input
                     type="range"
                     on:input={(e) => {
                       const newValue = e.currentTarget.valueAsNumber;
-                      node.inputs.set({ ...__inputs, [key]: newValue });
+                      node.outputs.set({ ...__outputs, [key]: newValue });
                     }}
                   />
                 {/if}
-              {/if}
-              <button
-                on:click|stopPropagation={() =>
-                  startConnection(node, key, "in")}
-              >
-                +
-              </button>
-            </div>
-          {/each}
-        </aside>
-      {/if}
-      <main class="flex-grow"></main>
-      {#if __outputs}
-        <aside class="flex flex-col gap-1">
-          {#each Object.entries(__outputs) as [key, value] (node.uuid + key)}
-            {@const connection = graph.edges.find(
-              ({ outVertex }) =>
-                outVertex.node === node && outVertex.key === key
-            )}
-            <div class="flex">
-              <p>{key}</p>
-              {#if initialConnection && initialConnectionDirection === "in"}
-                <!-- If we're drawing a new edge AND we're drawing from an input,
+
+                {#if initialConnection && initialConnectionDirection === "in"}
+                  <!-- If we're drawing a new edge AND we're drawing from an input,
               check if this node is a valid output to connect to -->
-                {#if initialConnection.node.uuid !== node.uuid && getConnections( initialConnection, { node, key } ).length === 0}
-                  <!-- If this input is valid, allow connection -->
-                  <button
-                    on:click={() =>
-                      endConnection({ node, key }, initialConnection)}
-                  >
-                    @
-                  </button>
-                {/if}
-              {:else if connection}
-                <!-- If there exists an edge that this output is a vertex of,
+                  {#if initialConnection.node.uuid !== node.uuid && getConnections( initialConnection, { node, key } ).length === 0}
+                    <!-- If this input is valid, allow connection -->
+                    <button
+                      on:click={() =>
+                        endConnection({ node, key }, initialConnection)}
+                    >
+                      @
+                    </button>
+                  {/if}
+                {:else if connection}
+                  <!-- If there exists an edge that this output is a vertex of,
               render the disconnect button -->
-                <button on:click={() => removeConnection(connection)}>x</button>
-              {/if}
+                  <button on:click={() => removeConnection(connection)}
+                    >x</button
+                  >
+                {/if}
 
-              {#if !__inputs}
-                <!-- If there are *no* inputs on this node, then render an input
-              value to modify the output (since it can't be transformed by some
-              function) TODO: very temporary behavior! -->
-                <input
-                  type="range"
-                  on:input={(e) => {
-                    const newValue = e.currentTarget.valueAsNumber;
-                    node.outputs.set({ ...__outputs, [key]: newValue });
-                  }}
-                />
-              {/if}
-
-              <!-- New Connection button -->
-              <button
-                on:click|stopPropagation={() =>
-                  startConnection(node, key, "out")}
-              >
-                +
-              </button>
-            </div>
-          {/each}
-        </aside>
-      {/if}
+                <!-- New Connection button -->
+                <button
+                  on:click|stopPropagation={() =>
+                    startConnection(node, key, "out")}
+                >
+                  +
+                </button>
+              </div>
+            {/each}
+          </aside>
+        {/if}
+      </main>
     </div>
   {/each}
-</main>
+</div>
 
 {sumOut}
