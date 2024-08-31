@@ -58,7 +58,7 @@ export const connect = <T extends (args: any) => Record<string, any>, K extends 
   ];
 };
 
-export const  disconnect = <T extends (args: any) => Record<string, any>, K extends keyof ReturnType<T>, U extends (args: any) => Record<string, any>, V extends keyof Parameters<U>[0]>(graph: App.FilterGraph, outNode: App.Node<T>, outKey: K, inNode: App.Node<U>, inKey: V) => {
+export const  disconnect = <T extends (args: any) => Record<string, any>, K extends keyof ReturnType<T>, U extends (args: any) => Record<string, any>, V extends keyof Parameters<U>[0]>(graph: App.FilterGraph, outNode: App.Node<T>, outKey: K, inNode: App.Node<U>, inKey: V): App.FilterGraph => {
   const edge = graph.edges.find(
     ({ outVertex, inVertex }) =>
       outVertex.node === outNode &&
@@ -72,4 +72,7 @@ export const  disconnect = <T extends (args: any) => Record<string, any>, K exte
     edge.unsubscriber();
     graph.edges = graph.edges.filter((e) => e !== edge);
   }
+
+  // return so reactivity works
+  return graph;
 }

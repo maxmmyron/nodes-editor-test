@@ -62,7 +62,7 @@
   };
 
   const removeConnection = (connection: App.Edge) => {
-    disconnect(
+    graph = disconnect(
       graph,
       connection.outVertex.node,
       connection.outVertex.key.toString(),
