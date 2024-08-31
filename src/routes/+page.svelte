@@ -30,10 +30,12 @@
     [500, 250]
   );
 
+  graph.nodes = [staticA, staticB, sum];
+
   connect(graph, staticA, "default", sum, "a");
   connect(graph, staticB, "default", sum, "b");
 
-  let sumOut: number;
+  let sumOut: number = 0;
   sum.outputs.subscribe((e) => (sumOut = e.sum));
 
   const startConnection = (
@@ -121,8 +123,8 @@
 
 <div class="relative w-full h-full">
   {#each graph.nodes as node}
-    {@const __inputs = get(node.inputs)}
-    {@const __outputs = get(node.outputs)}
+    {@const inputsStore = get(node.inputs)}
+    {@const outputsStore = get(node.outputs)}
     <div
       class="absolute border border-black rounded-md flex flex-col p-1 min-w-52"
       style="top: {node.pos[1]}px; left:{node.pos[0]}px;"
@@ -131,9 +133,9 @@
         <p class="text-center">{node.uuid}</p>
       </header>
       <main class="flex">
-        {#if __inputs}
+        {#if inputsStore}
           <aside class="flex flex-col gap-1">
-            {#each Object.entries(__inputs) as [key, value]}
+            {#each Object.entries(inputsStore) as [key, value]}
               {@const connections = getConnections({ node, key })}
               <div class="flex gap-0.5">
                 {#if connections.length === 0}
@@ -169,8 +171,11 @@
                     <input
                       type="range"
                       on:input={(e) => {
-                        const newValue = e.currentTarget.valueAsNumber;
-                        node.inputs.set({ ...__inputs, [key]: newValue });
+                        const val = e.currentTarget.valueAsNumber;
+                        node.inputs.update((store) => ({
+                          ...store,
+                          [key]: val,
+                        }));
                       }}
                     />
                   {/if}
@@ -181,24 +186,27 @@
           </aside>
         {/if}
         <div class="flex-grow"></div>
-        {#if __outputs}
+        {#if outputsStore}
           <aside class="flex flex-col gap-1">
-            {#each Object.entries(__outputs) as [key, value] (node.uuid + key)}
+            {#each Object.entries(outputsStore) as [key, value] (node.uuid + key)}
               {@const connection = graph.edges.find(
                 ({ outVertex }) =>
                   outVertex.node === node && outVertex.key === key
               )}
               <div class="flex gap-0.5">
                 <p>{key}</p>
-                {#if !__inputs}
+                {#if !inputsStore}
                   <!-- If there are *no* inputs on this node, then render an input
               value to modify the output (since it can't be transformed by some
               function) TODO: very temporary behavior! -->
                   <input
                     type="range"
                     on:input={(e) => {
-                      const newValue = e.currentTarget.valueAsNumber;
-                      node.outputs.set({ ...__outputs, [key]: newValue });
+                      const val = e.currentTarget.valueAsNumber;
+                      node.outputs.update((store) => ({
+                        ...store,
+                        [key]: val,
+                      }));
                     }}
                   />
                 {/if}
