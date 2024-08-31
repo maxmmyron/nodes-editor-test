@@ -26,17 +26,17 @@ export const createNode = <T extends (args: any) => Record<string, any>>(
     ref: null,
   };
 
-  node.inputs.subscribe((s) => {
-    const transformed = transform(s) as ReturnType<T>;
-    node.outputs.set(transformed);
-  });
+  node.inputs.subscribe((s) => node.outputs.set(transform(s) as ReturnType<T>));
 
   return node;
 };
+
 export const connect = <T extends (args: any) => Record<string, any>, K extends keyof ReturnType<T>, U extends (args: any) => Record<string, any>, V extends keyof Parameters<U>[0]>(graph: App.FilterGraph, outNode: App.Node<T>, outKey: K, inNode: App.Node<U>, inKey: V) => {
-  const unsubscriber = outNode.outputs.subscribe((e) => {
-    let out = e[inKey];
-    inNode.inputs.update((e) => ({ ...e, [inKey]: out }));
+  const unsubscriber = outNode.outputs.subscribe((storeOutput) => {
+    inNode.inputs.update((storeInput) => ({
+      ...storeInput,
+      [inKey]: storeOutput[outKey]
+    }));
   });
 
   // if there exists an edge from nodeA/keyA -> nodeB/keyB, return
@@ -58,7 +58,7 @@ export const connect = <T extends (args: any) => Record<string, any>, K extends 
   ];
 };
 
-export const disconnect = <T extends (args: any) => Record<string, any>, K extends keyof ReturnType<T>, U extends (args: any) => Record<string, any>, V extends keyof Parameters<U>[0]>(graph: App.FilterGraph, outNode: App.Node<T>, outKey: K, inNode: App.Node<U>, inKey: V) => {
+export const  disconnect = <T extends (args: any) => Record<string, any>, K extends keyof ReturnType<T>, U extends (args: any) => Record<string, any>, V extends keyof Parameters<U>[0]>(graph: App.FilterGraph, outNode: App.Node<T>, outKey: K, inNode: App.Node<U>, inKey: V) => {
   const edge = graph.edges.find(
     ({ outVertex, inVertex }) =>
       outVertex.node === outNode &&
