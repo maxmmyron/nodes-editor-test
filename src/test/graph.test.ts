@@ -1,4 +1,4 @@
-import { test, expect, it, describe, vi } from "vitest";
+import { test, expect, it, describe, vi, beforeEach } from "vitest";
 import * as lib from "$lib";
 import { get } from "svelte/store";
 
@@ -50,7 +50,7 @@ describe("node", () => {
   });
 
   it("can run an empty transform successfully", () => {
-    const node = lib.createNode(() => ({}), undefined, {}, [0, 0]);
+    const node = lib.createNode(() => ({}), undefined, {});
     const spy = vi.spyOn(node, "transform");
 
     node.transform();
@@ -59,15 +59,15 @@ describe("node", () => {
   });
 
   it("can be instantiated with default input and outputs args", () => {
-    const node = lib.createNode((arg0: {a: number, b: number}) => ({x: arg0.a + arg0.b}), {a: 2, b: 4}, {x: 6}, [0, 0]);
+    const node = lib.createNode((arg0: {a: number, b: number}) => ({x: arg0.a + arg0.b}), {a: 2, b: 4}, {x: 6});
 
     expect(get(node.inputs).a).toBe(2);
     expect(get(node.inputs).b).toBe(4);
     expect(get(node.outputs).x).toBe(6);
   });
 
-  it("can run a transform with args", () => {
-    const node = lib.createNode((arg0: {a: number, b: number}) => ({x: arg0.a + arg0.b}), {a: 0, b: 0}, {x: 0}, [0, 0]);
+  it("can run a transform directly with args", () => {
+    const node = lib.createNode((arg0: {a: number, b: number}) => ({x: arg0.a + arg0.b}), {a: 0, b: 0}, {x: 0});
     const spy = vi.spyOn(node, "transform");
 
     node.transform({a: 1, b: 2});
@@ -75,8 +75,48 @@ describe("node", () => {
     expect(spy).toHaveBeenCalled();
     expect(spy).toHaveReturnedWith({x: 3});
   });
+
+  it("runs transforms when input store is updated", () => {
+    const node = lib.createNode((arg0: number) => ({res: arg0}), 0, {res: 0});
+
+    node.inputs.set(5);
+
+    expect(get(node.outputs).res).toBe(5);
+  });
+
+  it("updates outputs store when transform function is directly called", () => {
+    const node = lib.createNode((arg0: number) => ({res: arg0}), 0, {res: 0});
+
+    node.transform(5);
+
+    expect(get(node.outputs).res).toBe(5);
+  });
 });
 
 describe("edge", () => {
-  it("may be instantiated", () => {});
+  it("may be instantiated", () => {
+    const outNode = lib.createNode(() => ({outV: 0}), undefined, {outV: 0});
+    const inNode = lib.createNode((arg0: {inV: number}) => ({}), {inV: 0}, {});
+
+    const edge = lib.createEdge(outNode, "outV", inNode, "inV");
+
+    expect(edge.inVertex)
+  });
+
+  it("throws an error on instantiation if vertex types don't match", () => {
+    const outNode = lib.createNode(() => ({outV: 0}), undefined, {outV: 0});
+    const inNode = lib.createNode((arg0: {inV: string}) => ({}), {inV: ""}, {});
+
+    expect(() => lib.createEdge(outNode, "outV", inNode, "inV")).toThrowError();
+  });
+
+  it("propagates events between connected nodes", () => {
+    const outNode = lib.createNode(() => ({outV: 0}), undefined, {outV: 0});
+    const inNode = lib.createNode((arg0: {inV: number}) => ({res: arg0.inV + 1}), {inV: 0}, {res: 0});
+
+    const edge = lib.createEdge(outNode, "outV", inNode, "inV");
+
+    outNode.outputs.set({outV: 1});
+    expect(get(inNode.outputs).res).toBe(2);
+  });
 });
