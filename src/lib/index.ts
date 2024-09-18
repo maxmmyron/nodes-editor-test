@@ -1,6 +1,6 @@
 // place files you want to import through the `$lib` alias in this folder.
 
-import { writable } from "svelte/store";
+import { get, writable } from "svelte/store";
 
 export const createGraph = (nodes?: App.Node<(args:any) => Record<string,any>>[], edges?: App.Edge[]): App.FilterGraph => {
   // TODO: validate edges, if there are any.
@@ -23,6 +23,7 @@ export const createGraph = (nodes?: App.Node<(args:any) => Record<string,any>>[]
   return graph;
 }
 
+// TODO: does removal of this node from memory also automatically release subscription?
 export const createNode = <T extends (args: any) => Record<string, any>>(
   transform: T,
   inputs: Parameters<T>[0],
@@ -33,14 +34,49 @@ export const createNode = <T extends (args: any) => Record<string, any>>(
 
   let node: App.Node<T> = {
     uuid,
-    transform,
     inputs: writable(inputs),
     outputs: writable(outputs),
+    transform: (args: Parameters<T>[0]): ReturnType<T> => {
+      node.inputs.set(args);
+      return transform(args) as ReturnType<T>;
+    },
     pos: pos ?? [0, 0],
     ref: null,
+    __transform: transform,
+    __previousInputs: inputs,
   };
 
-  node.inputs.subscribe((s) => node.outputs.set(transform(s) as ReturnType<T>));
+  node.inputs.subscribe((s) => {
+    let isTransformNecessary = false;
+
+    switch(typeof node.__previousInputs) {
+      // if the arg is an object (it almost always is), then we enumerate over the entries and compare.
+      case "object":
+        for(const [key, val] of Object.entries(node.__previousInputs)) {
+          // TODO: only fine-grained when dealing with primitive types!
+          if(s[key] !== val) {
+            isTransformNecessary = true;
+          }
+        }
+        break;
+      // these cases can be easily managed with single equivalency
+      case "number":
+      case "string":
+      case "boolean":
+        if(node.__previousInputs !== get(node.inputs)) {
+          isTransformNecessary = true;
+        }
+        break;
+      // default case runs for object types whose equivalency we cannot easily manage (like function), or in the case of undefined
+      default:
+        isTransformNecessary = true;
+        break;
+    }
+
+    if(isTransformNecessary) {
+      node.outputs.set(node.__transform(s) as ReturnType<T>)
+    }
+  });
 
   return node;
 };
@@ -50,6 +86,10 @@ export const createNode = <T extends (args: any) => Record<string, any>>(
  * MUST be validated by the graph onto which this edge is being added (mainly: does this edge's graph also contain the nodes this edge connects?)
  */
 export const createEdge = <T extends (args: any) => Record<string, any>, K extends keyof ReturnType<T>, U extends (args: any) => Record<string, any>, V extends keyof Parameters<U>[0]>(outNode: App.Node<T>, outKey: K, inNode: App.Node<U>, inKey: V): App.Edge => {
+  if(typeof get(outNode.outputs)[outKey] !== typeof get(inNode.inputs)[inKey]) {
+    throw new TypeError(`Error creating edge: Type mismatch between output vertex ${String(outKey)} and input vertex ${String(inKey)}`);
+  }
+
   const unsubscriber = outNode.outputs.subscribe((storeOutput) => {
     inNode.inputs.update((storeInput) => ({
       ...storeInput,

@@ -43,7 +43,7 @@ describe("node", () => {
 
     const spy = vi.spyOn(node, "transform");
 
-    node.transform();
+    node.transform(undefined);
 
     expect(spy).toHaveBeenCalled();
     expect(spy).toHaveReturnedWith({});
@@ -53,7 +53,7 @@ describe("node", () => {
     const node = lib.createNode(() => ({}), undefined, {});
     const spy = vi.spyOn(node, "transform");
 
-    node.transform();
+    node.transform(undefined);
 
     expect(spy).toHaveBeenCalled();
   });
@@ -109,14 +109,48 @@ describe("edge", () => {
 
     expect(() => lib.createEdge(outNode, "outV", inNode, "inV")).toThrowError();
   });
+});
 
+describe("graph propagation", () => {
   it("propagates events between connected nodes", () => {
     const outNode = lib.createNode(() => ({outV: 0}), undefined, {outV: 0});
-    const inNode = lib.createNode((arg0: {inV: number}) => ({res: arg0.inV + 1}), {inV: 0}, {res: 0});
+    const inNode = lib.createNode((arg0: {inV: number}) => ({res: arg0.inV + 1}), {inV: 0}, {res: 1});
 
-    const edge = lib.createEdge(outNode, "outV", inNode, "inV");
+    lib.createEdge(outNode, "outV", inNode, "inV");
 
     outNode.outputs.set({outV: 1});
     expect(get(inNode.outputs).res).toBe(2);
+  });
+
+  it("propagates events between multiple connected nodes", () => {
+    const node1 = lib.createNode(() => ({out1: 0}), undefined, {out1: 0});
+    const node2 = lib.createNode((arg0: {in2: number}) => ({out2: arg0.in2 + 1}), {in2: 0}, {out2: 1});
+    const node3 = lib.createNode((arg0: {in3: number}) => ({out3: arg0.in3 + 1}), {in3: 0}, {out3: 1});
+
+    lib.createEdge(node1, "out1", node2, "in2");
+    lib.createEdge(node2, "out2", node3, "in3");
+
+    node1.outputs.set({out1: 1});
+    expect(get(node3.outputs).out3).toBe(3);
+  });
+
+  it("performed fine-grained updates across graph based on how output changes after transform", () => {
+    const node1 = lib.createNode(() => ({out1: 0, out2: 0}), undefined, {out1: 0, out2: 0});
+    const node2 = lib.createNode((arg0: {in1: number}) => ({out: arg0.in1 + 1}), {in1: 0}, {out: -1});
+    const node3 = lib.createNode((arg0: {in2: number}) => ({out: arg0.in2 + 1}), {in2: 0}, {out: -1});
+
+    lib.createEdge(node1, "out1", node2, "in1");
+    lib.createEdge(node1, "out2", node3, "in2");
+
+    // if we update out2, we would expect node2 to run its transform function.
+    // we should *not* expect node3's transform to run.
+
+    node1.outputs.update((o) => ({
+      ...o,
+      out1: 5,
+    }));
+
+    expect(get(node2.outputs).out).toBe(6);
+    expect(get(node3.outputs).out).toBe(-1);
   });
 });
