@@ -10,23 +10,23 @@
   > | null = null;
 
   let staticA = createNode(
-    () => ({ default: 0 }),
-    undefined,
+    {},
     { default: 0 },
+    () => ({ default: 0 }),
     [200, 200]
   );
   let staticB = createNode(
-    () => ({ default: 0 }),
-    undefined,
+    {},
     { default: 0 },
+    () => ({ default: 0 }),
     [150, 350]
   );
   const sum = createNode(
+    { a: 0, b: 0 },
+    { sum: 0 },
     ({ a, b }: { a: number; b: number }) => ({
       sum: a + b,
     }),
-    { a: 0, b: 0 },
-    { sum: 0 },
     [500, 250]
   );
 
@@ -39,7 +39,10 @@
   sum.outputs.subscribe((e) => (sumOut = e.sum));
 
   const startConnection = (
-    node: App.Node<(args: any) => Record<string, any>>,
+    node: App.Node<
+      Record<string, App.Primitive>,
+      Record<string, App.Primitive>
+    >,
     key: string,
     dir: "in" | "out"
   ) => {
@@ -48,8 +51,12 @@
   };
 
   const endConnection = (
-    outVertex: App.Connection<(args: any) => Record<string, any>> | null,
-    inVertex: App.Connection<(args: any) => Record<string, any>> | null
+    outVertex: App.Connection<
+      (args: any) => Record<string, App.Primitive>
+    > | null,
+    inVertex: App.Connection<
+      (args: any) => Record<string, App.Primitive>
+    > | null
   ) => {
     if (!outVertex || !inVertex) return;
     connect(
@@ -57,7 +64,7 @@
       outVertex.node,
       outVertex.key.toString(),
       inVertex.node,
-      inVertex.key
+      inVertex.key.toString()
     );
   };
 
