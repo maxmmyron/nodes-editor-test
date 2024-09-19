@@ -5,24 +5,25 @@ import type { Unsubscriber, Writable } from "svelte/store";
 // for information about these interfaces
 declare global {
 	namespace App {
+		type Primitive = string | number | bigint | boolean | undefined | null | symbol;
+
 		type FilterGraph = {
-			nodes: Array<Node<(args: any) => Record<string, any>>>;
+			nodes: Array<App.Node>;
 			edges: Array<App.Edge>;
 		};
 
 		type Edge = {
-			outVertex: Connection<(args: any) => Record<string, any>>;
-			inVertex: Connection<(args: any) => Record<string, any>>;
+			outVertex: Connection<(args: {[key: string]: Primitive}) => {[key: string]: Primitive}>;
+			inVertex: Connection<(args: {[key: string]: Primitive}) => {[key: string]: Primitive}>;
 			unsubscriber: Unsubscriber;
 		};
 
-		type Connection<T extends (args: any) => Record<string, any>> = {
-			node: Node<T>;
+		type Connection<T extends (args: {[key: string]: Primitive}) => {[key: string]: Primitive}> = {
+			node: Node;
 			key: keyof Parameters<T>[0];
 		};
 
-		// TODO: we should more strictly require input arg to be a Record<string, any> (or, even better, Record<string, any primitive>)
-		type Node<T extends (args: any) => Record<string, any>> = {
+		type Node<T extends {[key: string]: Primitive}, U extends {[key: string]: Primitive}> = {
 			uuid: string;
 			pos: [number, number];
 			/**
@@ -32,34 +33,26 @@ declare global {
 			/**
 			 * The raw transform for the node. Used internally to handle transform when inputs are changed.
 			 */
-			__transform: T;
+			__transform: (args: T) => U;
 			/**
 			 * A more accessible transform function that may be used to directly trigger transform and event propagation. This shouldn't *really* be used in prod, but may be.
-			 * FIXME: undefined args (i.e. no inputs args on a transform) requires
-			 *  "undefined" when running transform() directly. Ideally, this should
-			 * be removed, such that no args can be ran as "transform()", not
-			 * "transform(undefined)"
 			 */
-			transform: (args: Parameters<T>[0]) => ReturnType<T>;
+			transform: (args: T) => U;
 			/**
 			 * A store to track current inputs. Changes to this store will:
 			 *  1. run __transform function
 			 *  2. update outputs store
 			 */
-			inputs: Writable<Parameters<T>[0]>;
+			inputs: Writable<T>;
 			/**
-			 * TODO: Does this follow fine reactivity? Ideally, change to outputs
-			 * (like where x is changes and y isn't) should *only* trigger change
-			 * to those nodes attached to outputs[x] and not outputs[y].
-			 *
 			 * A store to track current outputs (i.e. what is returned from transform function). Changes to this store will:
 			 *  1. Update any Nodes connected to output
 			 */
-			outputs: Writable<ReturnType<T>>;
+			outputs: Writable<U>;
 			/**
 			 * Previous input values. This is compared against the current input store when the store is update to give a sort-of fine-grained reactivity.
 			 */
-			__previousInputs: Parameters<T>[0];
+			__previousInputs: T;
 		};
 	}
 }

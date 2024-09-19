@@ -2,7 +2,7 @@
 
 import { get, writable } from "svelte/store";
 
-export const createGraph = (nodes?: App.Node<(args:any) => Record<string,any>>[], edges?: App.Edge[]): App.FilterGraph => {
+export const createGraph = (nodes?: App.Node<any, {[key: string]: App.Primitive}>[], edges?: App.Edge[]): App.FilterGraph => {
   // TODO: validate edges, if there are any.
 
   edges = edges ?? [];
@@ -24,21 +24,25 @@ export const createGraph = (nodes?: App.Node<(args:any) => Record<string,any>>[]
 }
 
 // TODO: does removal of this node from memory also automatically release subscription?
-export const createNode = <T extends (args: any) => Record<string, any>>(
-  transform: T,
-  inputs: Parameters<T>[0],
-  outputs: ReturnType<T>,
+export const createNode = <T extends {[key: string]: App.Primitive}, U extends {[key: string]: App.Primitive}>(
+  inputs: T,
+  outputs: U,
+  transform: (args: T) => U,
   pos?: [number, number]
-): App.Node<T> => {
+): App.Node<T, U> => {
+  if (typeof inputs !== "object" || typeof outputs !== "object") {
+    throw new TypeError("Error instantiating node: type of inputs and outputs must both be objects (cannot be primitives).")
+  }
+
   let uuid = Math.floor(Math.random() * 10000000).toString(36);
 
-  let node: App.Node<T> = {
+  let node: App.Node<T, U> = {
     uuid,
     inputs: writable(inputs),
     outputs: writable(outputs),
-    transform: (args: Parameters<T>[0]): ReturnType<T> => {
+    transform: (args: T): U => {
       node.inputs.set(args);
-      return transform(args) as ReturnType<T>;
+      return transform(args);
     },
     pos: pos ?? [0, 0],
     ref: null,
@@ -49,32 +53,14 @@ export const createNode = <T extends (args: any) => Record<string, any>>(
   node.inputs.subscribe((s) => {
     let isTransformNecessary = false;
 
-    switch(typeof node.__previousInputs) {
-      // if the arg is an object (it almost always is), then we enumerate over the entries and compare.
-      case "object":
-        for(const [key, val] of Object.entries(node.__previousInputs)) {
-          // TODO: only fine-grained when dealing with primitive types!
-          if(s[key] !== val) {
-            isTransformNecessary = true;
-          }
-        }
-        break;
-      // these cases can be easily managed with single equivalency
-      case "number":
-      case "string":
-      case "boolean":
-        if(node.__previousInputs !== get(node.inputs)) {
-          isTransformNecessary = true;
-        }
-        break;
-      // default case runs for object types whose equivalency we cannot easily manage (like function), or in the case of undefined
-      default:
+    for(const [key, val] of Object.entries(node.__previousInputs)) {
+      if(s[key] !== val) {
         isTransformNecessary = true;
-        break;
+      }
     }
 
     if(isTransformNecessary) {
-      node.outputs.set(node.__transform(s) as ReturnType<T>)
+      node.outputs.set(node.__transform(s));
     }
   });
 
@@ -85,7 +71,7 @@ export const createNode = <T extends (args: any) => Record<string, any>>(
  * Lazily creates a new edge. This is NOT validated on creation, so adding an edge created by this function
  * MUST be validated by the graph onto which this edge is being added (mainly: does this edge's graph also contain the nodes this edge connects?)
  */
-export const createEdge = <T extends (args: any) => Record<string, any>, K extends keyof ReturnType<T>, U extends (args: any) => Record<string, any>, V extends keyof Parameters<U>[0]>(outNode: App.Node<T>, outKey: K, inNode: App.Node<U>, inKey: V): App.Edge => {
+export const createEdge = <T extends {[key: string]: App.Primitive}, U extends {[key: string]: App.Primitive}, K extends {[key: string]: App.Primitive}, Z extends {[key: string]: App.Primitive}>(outNode: App.Node<T, U>, outKey: keyof U, inNode: App.Node<K, Z>, inKey: keyof K): App.Edge => {
   if(typeof get(outNode.outputs)[outKey] !== typeof get(inNode.inputs)[inKey]) {
     throw new TypeError(`Error creating edge: Type mismatch between output vertex ${String(outKey)} and input vertex ${String(inKey)}`);
   }
@@ -98,13 +84,13 @@ export const createEdge = <T extends (args: any) => Record<string, any>, K exten
   });
 
   return {
-    outVertex: { node: outNode, key: outKey },
-    inVertex: { node: inNode, key: inKey },
+    outVertex: { node: outNode, key: String(outKey) },
+    inVertex: { node: inNode, key: String(inKey) },
     unsubscriber,
   };
 };
 
-export const connect = <T extends (args: any) => Record<string, any>, K extends keyof ReturnType<T>, U extends (args: any) => Record<string, any>, V extends keyof Parameters<U>[0]>(graph: App.FilterGraph, outNode: App.Node<T>, outKey: K, inNode: App.Node<U>, inKey: V) => {
+export const connect = <T extends {[key: string]: App.Primitive}, U extends {[key: string]: App.Primitive}, K extends {[key: string]: App.Primitive}, Z extends {[key: string]: App.Primitive}>(graph: App.FilterGraph, outNode: App.Node<T, U>, outKey: keyof U, inNode: App.Node<K, Z>, inKey: keyof K) => {
   const edge = createEdge(outNode, outKey, inNode, inKey);
 
   if(!validateGraphEdge(graph, edge)) {
@@ -117,7 +103,7 @@ export const connect = <T extends (args: any) => Record<string, any>, K extends 
   graph.edges = [...graph.edges, edge];
 };
 
-export const disconnect = <T extends (args: any) => Record<string, any>, K extends keyof ReturnType<T>, U extends (args: any) => Record<string, any>, V extends keyof Parameters<U>[0]>(graph: App.FilterGraph, outNode: App.Node<T>, outKey: K, inNode: App.Node<U>, inKey: V): App.FilterGraph => {
+export const disconnect = <T extends {[key: string]: App.Primitive}, U extends {[key: string]: App.Primitive}, K extends {[key: string]: App.Primitive}, Z extends {[key: string]: App.Primitive}>(graph: App.FilterGraph, outNode: App.Node<T, U>, outKey: keyof U, inNode: App.Node<K, Z>, inKey: keyof K): App.FilterGraph => {
   const edge = graph.edges.find(
     ({ outVertex, inVertex }) =>
       outVertex.node === outNode &&
