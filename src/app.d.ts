@@ -15,7 +15,7 @@ declare global {
 		type Edge = {
 			outVertex: Connection<(args: {[key: string]: Primitive}) => {[key: string]: Primitive}>;
 			inVertex: Connection<(args: {[key: string]: Primitive}) => {[key: string]: Primitive}>;
-			unsubscriber: Unsubscriber;
+			unsubscribe: Unsubscriber;
 		};
 
 		type Connection<T extends (args: {[key: string]: Primitive}) => {[key: string]: Primitive}> = {
