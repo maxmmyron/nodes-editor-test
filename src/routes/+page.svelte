@@ -1,8 +1,12 @@
 <script lang="ts">
-  import { connect, createGraph, createNode, disconnect } from "$lib";
+  import {
+    connect,
+    createEdge,
+    createGraph,
+    createNode,
+    disconnect,
+  } from "$lib";
   import { get } from "svelte/store";
-
-  let graph = createGraph();
 
   let initialConnectionDirection: "out" | "in" = "out";
   let initialConnection: App.Connection<
@@ -30,10 +34,13 @@
     [500, 250]
   );
 
-  graph.nodes = [staticA, staticB, sum];
-
-  connect(graph, staticA, "default", sum, "a");
-  connect(graph, staticB, "default", sum, "b");
+  let graph = createGraph(
+    [staticA, staticB, sum],
+    [
+      createEdge(staticA, "default", sum, "a"),
+      createEdge(staticB, "default", sum, "b"),
+    ]
+  );
 
   let sumOut: number = 0;
   sum.outputs.subscribe((e) => (sumOut = e.sum));
