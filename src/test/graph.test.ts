@@ -162,4 +162,24 @@ describe("graph propagation", () => {
     expect(get(node2.outputs).out).toBe(6);
     expect(get(node3.outputs).out).toBe(-1);
   });
+
+  it("supports cyclic structures", () => {
+    const root = lib.createNode({}, {out: 0}, () => ({out: 0}));
+    const pass = lib.createNode({input: 0}, {output: 0}, (arg) => ({output: arg.input}));
+    const inc = lib.createNode({input: 0}, {output: 1}, (arg) => ({output: arg.input + 1}));
+
+    const graph = lib.createGraph([root, pass, inc]);
+
+    let count = 0;
+    inc.subscribe("inputchange", () => {
+      count++;
+      if(count > 5) {
+        lib.disconnect(graph, inc, "output", pass, "input");
+      }
+    })
+
+    lib.connect(graph, root, "out", inc, "input");
+    lib.connect(graph, inc, "output", pass, "input");
+    lib.connect(graph, pass, "output", inc, "input");
+  });
 });

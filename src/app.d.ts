@@ -8,7 +8,7 @@ declare global {
 		type Primitive = string | number | bigint | boolean | undefined | null | symbol;
 
 		type FilterGraph = {
-			nodes: Array<App.Node>;
+			nodes: Array<App.Node<{[key: string]: Primitive}, {[key: string]: Primitive}>>;
 			edges: Array<App.Edge>;
 		};
 
@@ -53,6 +53,19 @@ declare global {
 			 * Previous input values. This is compared against the current input store when the store is update to give a sort-of fine-grained reactivity.
 			 */
 			__previousInputs: T;
+			/**
+			 * Runs a callback for the provided event when that event is called.
+			 *
+			 * @param ev the event to subscribe to:
+			 * - ``inputchange``: runs after the `inputs` store has been modified, and
+			 *   before the transform has been called
+			 * - ``transform``: runs after the transform has been processed, and before
+			 *   the output store has been modified
+			 * - ``outputchange``: runs after the `outputs` store has been modified, and
+			 *   before any relevant connected input stores have been modified
+			 * @returns An unsubscriber function that can be invoked to remove the subscriber callback.
+			 */
+			subscribe: (ev: "inputchange" | "transform" | "outputchange", fn: () => void) => (() => void);
 		};
 	}
 }

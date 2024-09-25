@@ -22,6 +22,12 @@ export const createNode = <T extends {[key: string]: App.Primitive}, U extends {
     throw new TypeError("Error instantiating node: type of inputs and outputs must both be objects (cannot be primitives).")
   }
 
+  let subscribers = {
+    "inputchange": [] as Array<() => void>,
+    "transform": [] as Array<() => void>,
+    "outputchange": [] as Array<() => void>,
+  };
+
   let node: App.Node<T, U> = {
     uuid: Math.floor(Math.random() * 10000000).toString(36),
     inputs: writable(inputs),
@@ -34,11 +40,23 @@ export const createNode = <T extends {[key: string]: App.Primitive}, U extends {
     ref: null,
     __transform: transform,
     __previousInputs: inputs,
+    subscribe: (ev, fn) => {
+      subscribers[ev] = [...subscribers[ev], fn];
+
+      return () => {
+        subscribers[ev] = subscribers[ev].filter(f => f !== fn);
+      }
+    },
   };
 
   node.inputs.subscribe((s) => {
+    subscribers.inputchange.forEach(fn => fn());
     if(Object.entries(node.__previousInputs).some(([k, v]) => s[k] !== v)) {
-      node.outputs.set(node.__transform(s));
+      const outputs = node.__transform(s);
+      subscribers.transform.forEach(fn => fn());
+
+      node.outputs.set(outputs);
+      subscribers.outputchange.forEach(fn => fn());
     }
   });
 
