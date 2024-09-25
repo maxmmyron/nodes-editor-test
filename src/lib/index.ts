@@ -33,6 +33,7 @@ export const createNode = <T extends {[key: string]: App.Primitive}, U extends {
     inputs: writable(inputs),
     outputs: writable(outputs),
     transform: (args: T): U => {
+      // we don't need to invoke event callbacks here because we're setting inputs store, which will then run the relevant subscription callback.
       node.inputs.set(args);
       return transform(args);
     },
@@ -56,9 +57,12 @@ export const createNode = <T extends {[key: string]: App.Primitive}, U extends {
       subscribers.transform.forEach(fn => fn());
 
       node.outputs.set(outputs);
-      subscribers.outputchange.forEach(fn => fn());
     }
   });
+
+  node.outputs.subscribe((s) => {
+    subscribers.outputchange.forEach(fn => fn());
+  })
 
   return node;
 };

@@ -100,6 +100,52 @@ describe("node", () => {
 
     expect(get(node.outputs).res).toBe(5);
   });
+
+  it("executes registered inputchange event callbacks", () => {
+    const node = lib.createNode({input: 0}, {output: 0}, (arg0) => ({output: arg0.input}));
+
+    const mock = vi.fn();
+    node.subscribe("inputchange", mock);
+
+    node.inputs.set({input: 1});
+
+    expect(mock).toHaveBeenCalledOnce();
+  });
+
+  it("executes transform subscription event callbacks", () => {
+    const node = lib.createNode({input: 0}, {output: 0}, (arg0) => ({output: arg0.input}));
+    const mock = vi.fn();
+    node.subscribe("transform", mock);
+
+    node.transform({input: 1});
+
+    expect(mock).toHaveBeenCalled();
+    // make sure mock was *only* called once,
+    expect(mock).toHaveBeenCalledOnce();
+  });
+
+  it("executes outputchange subscription event callbacks", () => {
+    const node = lib.createNode({input: 0}, {output: 0}, (arg0) => ({output: arg0.input}));
+    const mock = vi.fn();
+    node.subscribe("outputchange", mock);
+
+    node.outputs.set({output: 1});
+
+    expect(mock).toHaveBeenCalledOnce();
+  });
+
+  it("provides an unsubscribe function that removes the subscription callback", () => {
+    const node = lib.createNode({input: 0}, {output: 0}, (arg0) => ({output: arg0.input}));
+
+    const mock = vi.fn();
+    const unsubscribe = node.subscribe("transform", mock);
+
+    node.transform({input: 1});
+    unsubscribe();
+    node.transform({input: 1});
+
+    expect(mock).toHaveBeenCalledOnce();
+  });
 });
 
 describe("edge", () => {
