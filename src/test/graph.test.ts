@@ -33,6 +33,33 @@ describe("graph", () => {
     // errors with no common args
     expect(() => lib.createGraph([], [lib.createEdge(nodeOut, "output", nodeIn, "input")])).toThrowError();
   });
+
+  it("may have nodes and edges removed", () => {
+    const nodeOut = lib.createNode({}, {output: 0}, () => ({output: 1}));
+    const nodeIn = lib.createNode({input: 0}, {}, (args: {input: number}) => ({}));
+
+    // const nodeIn = lib.createNode((args: {input: number}) => ({}), {input: 0}, {});
+    const graph = lib.createGraph([nodeOut, nodeIn], [lib.createEdge(nodeOut, "output", nodeIn, "input")]);
+
+    lib.disconnect(graph, nodeOut, "output", nodeIn, "input");
+    expect(graph.edges.length).toBe(0);
+
+    lib.removeNode(graph, nodeOut);
+    expect(graph.nodes.length).toBe(1);
+  });
+
+  it("automatically removes node-connected edges when that node is removed", () => {
+    const nodeOut = lib.createNode({}, {output: 0}, () => ({output: 1}));
+    const nodeIn = lib.createNode({input: 0}, {}, (args: {input: number}) => ({}));
+
+    // const nodeIn = lib.createNode((args: {input: number}) => ({}), {input: 0}, {});
+    const graph = lib.createGraph([nodeOut, nodeIn], [lib.createEdge(nodeOut, "output", nodeIn, "input")]);
+
+    lib.removeNode(graph, nodeOut);
+
+    expect(graph.nodes.length).toBe(1);
+    expect(graph.edges.length).toBe(0);
+  });
 });
 
 describe("node", () => {
@@ -145,6 +172,15 @@ describe("node", () => {
     node.transform({input: 1});
 
     expect(mock).toHaveBeenCalledOnce();
+  });
+
+  it("can be deleted (and unsubscribes from relevant subscriptions)", () => {
+    const node = lib.createNode({input: 0}, {output: 0}, (arg0) => ({output: arg0.input}));
+
+    node.free();
+
+    node.inputs.set({input: 1});
+    expect(get(node.outputs).output).toBe(0);
   });
 });
 

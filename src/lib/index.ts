@@ -1,5 +1,6 @@
 // place files you want to import through the `$lib` alias in this folder.
 
+import { invalidate } from "$app/navigation";
 import { get, writable } from "svelte/store";
 
 export const createGraph = (nodes: App.Node<any, {[key: string]: App.Primitive}>[] = [], edges: App.Edge[] = []): App.FilterGraph => {
@@ -48,9 +49,10 @@ export const createNode = <T extends {[key: string]: App.Primitive}, U extends {
         subscribers[ev] = subscribers[ev].filter(f => f !== fn);
       }
     },
+    free: () => {},
   };
 
-  node.inputs.subscribe((s) => {
+  const unsubscribeInputs = node.inputs.subscribe((s) => {
     subscribers.inputchange.forEach(fn => fn());
     if(Object.entries(node.__previousInputs).some(([k, v]) => s[k] !== v)) {
       const outputs = node.__transform(s);
@@ -60,9 +62,14 @@ export const createNode = <T extends {[key: string]: App.Primitive}, U extends {
     }
   });
 
-  node.outputs.subscribe((s) => {
+  const unsubscribeOutputs = node.outputs.subscribe((s) => {
     subscribers.outputchange.forEach(fn => fn());
-  })
+  });
+
+  node.free = () => {
+    unsubscribeInputs();
+    unsubscribeOutputs();
+  };
 
   return node;
 };
@@ -111,6 +118,22 @@ export const disconnect = <T extends {[key: string]: App.Primitive}, U extends {
 
   return graph;
 }
+
+export const removeNode = (graph: App.FilterGraph, node: App.Node<{ [key: string]: App.Primitive; }, { [key: string]: App.Primitive; }>) => {
+  if(!graph.nodes.includes(node)) return;
+
+  graph.nodes = graph.nodes.filter(n => n.uuid !== node.uuid);
+
+  let edges: Array<App.Edge> = [];
+  graph.edges.forEach((edge) => {
+    if(edge.outVertex.node.uuid === node.uuid || edge.inVertex.node.uuid === node.uuid) edge.unsubscribe();
+    else edges = [...edges, edge];
+  });
+
+  graph.edges = edges;
+
+  return graph;
+};
 
 /**
  * Validates that the edge we're trying to add to the graph is composed of two nodes that already exist on the graph

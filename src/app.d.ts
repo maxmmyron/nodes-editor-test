@@ -66,6 +66,10 @@ declare global {
 			 * @returns An unsubscriber function that can be invoked to remove the subscriber callback.
 			 */
 			subscribe: (ev: "inputchange" | "transform" | "outputchange", fn: () => void) => (() => void);
+			/**
+			 * A function that runs unsubscription callbacks for subscriptions created at node creation. Used when done with a node.
+			 */
+			free: () => void;
 		};
 	}
 }
